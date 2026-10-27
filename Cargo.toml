@@ -1,0 +1,8 @@
+[package]
+name = "battery-monitor"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+dbus = "0.9"
+serialport = { version = "4", default-features = false }

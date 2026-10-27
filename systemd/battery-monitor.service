@@ -1,0 +1,10 @@
+[Unit]
+Description=Framework LED Matrix Battery Monitor
+
+[Service]
+ExecStart=%h/.local/bin/battery-monitor
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
