@@ -20,13 +20,17 @@ fn main() -> Result<(), Box<dyn Error>> {
         "type='signal',sender='org.freedesktop.UPower',interface='org.freedesktop.DBus.Properties',member='PropertiesChanged',path='{UPOWER_PATH}'"
     ))?;
 
+    let mut last_img: Option<(u8, [u8; 39])> = None;
+    let mut last_pct: u8 = 0;
     loop {
-        update_matrices(&connection)?;
-        connection.process(Duration::from_secs(60))?;
+        if let Err(e) = update_matrices(&connection, &mut last_img, &mut last_pct) {
+            eprintln!("{e}");
+        }
+        connection.process(Duration::from_secs(3600))?;
     }
 }
 
-fn update_matrices(connection: &Connection) -> Result<(), Box<dyn Error>> {
+fn update_matrices(connection: &Connection, last_img: &mut Option<(u8, [u8; 39])>, last_pct: &mut u8) -> Result<(), Box<dyn Error>> {
     let upower = connection.with_proxy(
         "org.freedesktop.UPower",
         UPOWER_PATH,
@@ -45,8 +49,30 @@ fn update_matrices(connection: &Connection) -> Result<(), Box<dyn Error>> {
         .get("org.freedesktop.UPower.Device", "Percentage")
         .map_err(|error| format!("Could not read UPower battery percentage: {error}"))?;
     let percentage = percentage.round().clamp(0.0, 100.0) as u8;
-    let brightness = if on_battery { 10 } else { 90 };
+    let brightness = if on_battery { 5 } else { 90 };
     let image = battery_image(percentage);
+
+    for device in MATRIX_PORTS {
+        let mut port = serialport::new(device, 115_200)
+            .timeout(Duration::from_secs(2))
+            .open()
+            .map_err(|error| format!("Could not open {device}: {error}"))?;
+        wake_up(&mut *port)
+            .map_err(|error| format!("Could not wake up {device}: {error}"))?;
+    }
+
+    if *last_pct == percentage {
+        return Ok(());
+    }
+    *last_pct = percentage;
+    println!(
+        "Battery: {percentage}% ({} power)",
+        if on_battery { "battery" } else { "AC" }
+    );
+
+    if *last_img == Some((brightness, image)) {
+        return Ok(());
+    }
 
     for device in MATRIX_PORTS {
         let mut port = serialport::new(device, 115_200)
@@ -59,11 +85,13 @@ fn update_matrices(connection: &Connection) -> Result<(), Box<dyn Error>> {
             .map_err(|error| format!("Could not draw battery on {device}: {error}"))?;
     }
 
-    println!(
-        "Battery: {percentage}% ({} power)",
-        if on_battery { "battery" } else { "AC" }
-    );
+    *last_img = Some((brightness, image));
+
     Ok(())
+}
+
+fn wake_up(port: &mut dyn SerialPort) -> Result<(), Box<dyn Error>> {
+    send_command(port, 0x03, &[0])
 }
 
 fn set_brightness(port: &mut dyn SerialPort, brightness: u8) -> Result<(), Box<dyn Error>> {
