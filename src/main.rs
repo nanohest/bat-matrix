@@ -8,8 +8,74 @@ use serialport::SerialPort;
 const MATRIX_PORTS: [&str; 2] = ["/dev/ttyACM0", "/dev/ttyACM1"];
 const BATTERY_PATH: &str = "/org/freedesktop/UPower/devices/DisplayDevice";
 const UPOWER_PATH: &str = "/org/freedesktop/UPower";
+const HELP: &str = "\
+USAGE: batmon [OPTIONS]
+
+Show battery level on your Framework LED Matrix module(s)
+
+OPTIONS:
+  -d, --device      Choose a single device to display battery status on.
+                    Eg.: /dev/ttyACM0
+                    Default: both of /dev/ttyACM0 and /dev/ttyACM1
+  -b, --on-battery  Set custom brightness level, for when laptop runs on battery, as integer (percentage)
+                    Default: 5
+  -a, --on-ac       Set custom brightness level, for when laptop runs on AC power, as integer (percentage)
+                    Default: 90
+
+Examples:
+  Show battery level on device ttyACM0 only
+    batmon -d /dev/ttyACM0
+
+  Set brightness when running on battery to 10%
+    batmon -b 10
+
+  Set brightness when running on AC power to 50%
+    batmon -a 50
+";
+
+struct Args {
+    device: Option<String>,
+    on_battery: u8,
+    on_ac: u8,
+}
+
+fn parse_args() -> Result<Args, lexopt::Error> {
+    use lexopt::prelude::*;
+
+    let mut device = None;
+    let mut on_battery = 5;
+    let mut on_ac = 90;
+    let mut parser = lexopt::Parser::from_env();
+    while let Some(arg) = parser.next()? {
+        match arg {
+            Short('d') | Long("device") => device = Some(parser.value()?.string()?),
+            Short('b') | Long("on-battery") => on_battery = parser.value()?.parse()?,
+            Short('a') | Long("on-ac") => on_ac = parser.value()?.parse()?,
+            Short('h') | Long("help") => {
+                print!("{}", HELP);
+                std::process::exit(0);
+            }
+            _ => return Err(arg.unexpected()),
+        }
+    }
+    Ok(Args {
+        device,
+        on_battery,
+        on_ac,
+    })
+}
 
 fn main() -> Result<(), Box<dyn Error>> {
+    let args = parse_args()?;
+    let devices: Vec<String> = match args.device {
+        Some(device) => vec![device],
+        None => MATRIX_PORTS.iter().map(|s| s.to_string()).collect(),
+    };
+    let bat_brightness = args.on_battery;
+    let ac_brightness = args.on_ac;
+
+    // dbg!(args);
+
     let connection = Connection::new_system()?;
 
     // Listen for battery percentage and AC power changes.
@@ -23,14 +89,28 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut last_img: Option<(u8, [u8; 39])> = None;
     let mut last_pct: u8 = 0;
     loop {
-        if let Err(e) = update_matrices(&connection, &mut last_img, &mut last_pct) {
+        if let Err(e) = update_matrices(
+            &connection,
+            &mut last_img,
+            &mut last_pct,
+            &devices,
+            bat_brightness,
+            ac_brightness,
+        ) {
             eprintln!("{e}");
         }
         connection.process(Duration::from_secs(3600))?;
     }
 }
 
-fn update_matrices(connection: &Connection, last_img: &mut Option<(u8, [u8; 39])>, last_pct: &mut u8) -> Result<(), Box<dyn Error>> {
+fn update_matrices(
+    connection: &Connection,
+    last_img: &mut Option<(u8, [u8; 39])>,
+    last_pct: &mut u8,
+    devices: &[String],
+    bat_brightness: u8,
+    ac_brightness: u8,
+) -> Result<(), Box<dyn Error>> {
     let upower = connection.with_proxy(
         "org.freedesktop.UPower",
         UPOWER_PATH,
@@ -49,16 +129,22 @@ fn update_matrices(connection: &Connection, last_img: &mut Option<(u8, [u8; 39])
         .get("org.freedesktop.UPower.Device", "Percentage")
         .map_err(|error| format!("Could not read UPower battery percentage: {error}"))?;
     let percentage = percentage.round().clamp(0.0, 100.0) as u8;
-    let brightness = if on_battery { 5 } else { 90 };
+    let brightness_pct = if on_battery {
+        bat_brightness
+    } else {
+        ac_brightness
+    };
+    let brightness_abs = (u16::from(brightness_pct.min(100)) * 255 / 100) as u8;
     let image = battery_image(percentage);
 
-    for device in MATRIX_PORTS {
+    for device in devices {
         let mut port = serialport::new(device, 115_200)
             .timeout(Duration::from_secs(2))
             .open()
             .map_err(|error| format!("Could not open {device}: {error}"))?;
-        wake_up(&mut *port)
-            .map_err(|error| format!("Could not wake up {device}: {error}"))?;
+        wake_up(&mut *port).map_err(|error| format!("Could not wake up {device}: {error}"))?;
+        set_brightness(&mut *port, brightness_abs)
+            .map_err(|error| format!("Could not set brightness on {device}: {error}"))?;
     }
 
     if *last_pct == percentage {
@@ -70,22 +156,20 @@ fn update_matrices(connection: &Connection, last_img: &mut Option<(u8, [u8; 39])
         if on_battery { "battery" } else { "AC" }
     );
 
-    if *last_img == Some((brightness, image)) {
+    if *last_img == Some((brightness_abs, image)) {
         return Ok(());
     }
 
-    for device in MATRIX_PORTS {
+    for device in devices {
         let mut port = serialport::new(device, 115_200)
             .timeout(Duration::from_secs(2))
             .open()
             .map_err(|error| format!("Could not open {device}: {error}"))?;
-        set_brightness(&mut *port, brightness)
-            .map_err(|error| format!("Could not set brightness on {device}: {error}"))?;
         display_image(&mut *port, &image)
             .map_err(|error| format!("Could not draw battery on {device}: {error}"))?;
     }
 
-    *last_img = Some((brightness, image));
+    *last_img = Some((brightness_abs, image));
 
     Ok(())
 }
