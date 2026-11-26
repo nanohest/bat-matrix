@@ -5,4 +5,5 @@ edition = "2024"
 
 [dependencies]
 dbus = "0.9"
+lexopt = "0.3.2"
 serialport = { version = "4", default-features = false }
