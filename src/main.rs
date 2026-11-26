@@ -1,10 +1,13 @@
 use std::error::Error;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
+use std::time::Instant;
 
 use dbus::blocking::Connection;
 use dbus::blocking::stdintf::org_freedesktop_dbus::Properties;
 use serialport::SerialPort;
 
+static DEBUG: AtomicBool = AtomicBool::new(false);
 const MATRIX_PORTS: [&str; 2] = ["/dev/ttyACM0", "/dev/ttyACM1"];
 const BATTERY_PATH: &str = "/org/freedesktop/UPower/devices/DisplayDevice";
 const UPOWER_PATH: &str = "/org/freedesktop/UPower";
@@ -18,9 +21,10 @@ OPTIONS:
                     Eg.: /dev/ttyACM0
                     Default: both of /dev/ttyACM0 and /dev/ttyACM1
   -b, --on-battery  Set custom brightness level, for when laptop runs on battery, as integer (percentage)
-                    Default: 5
+                    Default: 2
   -a, --on-ac       Set custom brightness level, for when laptop runs on AC power, as integer (percentage)
-                    Default: 90
+                    Default: 50
+  -v, --verbose     Enable verbose output. Mostly usable for debugging.
 
 Examples:
   Show battery level on device ttyACM0 only
@@ -29,28 +33,39 @@ Examples:
   Set brightness when running on battery to 10%
     batmon -b 10
 
-  Set brightness when running on AC power to 50%
-    batmon -a 50
+  Set brightness when running on AC power to 90%
+    batmon -a 90
 ";
 
 struct Args {
     device: Option<String>,
     on_battery: u8,
     on_ac: u8,
+    verbose: bool,
+}
+
+macro_rules! debug {
+    ($($arg:tt)*) => {
+        if DEBUG.load(Ordering::Relaxed) {
+            eprintln!($($arg)*);
+        }
+    };
 }
 
 fn parse_args() -> Result<Args, lexopt::Error> {
     use lexopt::prelude::*;
 
     let mut device = None;
-    let mut on_battery = 5;
-    let mut on_ac = 90;
+    let mut on_battery = 2;
+    let mut on_ac = 50;
+    let mut verbose = false;
     let mut parser = lexopt::Parser::from_env();
     while let Some(arg) = parser.next()? {
         match arg {
             Short('d') | Long("device") => device = Some(parser.value()?.string()?),
             Short('b') | Long("on-battery") => on_battery = parser.value()?.parse()?,
             Short('a') | Long("on-ac") => on_ac = parser.value()?.parse()?,
+            Short('v') | Long("verbose") => verbose = true,
             Short('h') | Long("help") => {
                 print!("{}", HELP);
                 std::process::exit(0);
@@ -62,6 +77,7 @@ fn parse_args() -> Result<Args, lexopt::Error> {
         device,
         on_battery,
         on_ac,
+        verbose,
     })
 }
 
@@ -73,8 +89,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     };
     let bat_brightness = args.on_battery;
     let ac_brightness = args.on_ac;
-
-    // dbg!(args);
+    DEBUG.store(args.verbose, Ordering::Relaxed);
 
     let connection = Connection::new_system()?;
 
@@ -86,20 +101,42 @@ fn main() -> Result<(), Box<dyn Error>> {
         "type='signal',sender='org.freedesktop.UPower',interface='org.freedesktop.DBus.Properties',member='PropertiesChanged',path='{UPOWER_PATH}'"
     ))?;
 
+    const KEEPALIVE: Duration = Duration::from_secs(50);
+    let mut next_ping = Instant::now() + KEEPALIVE;
+    let mut got_signal = true; // draw once at startup
     let mut last_img: Option<(u8, [u8; 39])> = None;
     let mut last_pct: u8 = 0;
+    let mut last_pass = Instant::now();
+
     loop {
-        if let Err(e) = update_matrices(
-            &connection,
-            &mut last_img,
-            &mut last_pct,
-            &devices,
-            bat_brightness,
-            ac_brightness,
-        ) {
-            eprintln!("{e}");
+        if DEBUG.load(Ordering::Relaxed) {
+            let now = Instant::now();
+            let elapsed = now.duration_since(last_pass).as_secs();
+            last_pass = now;
+
+            println!("Seconds since last DBus UPower signal: +{elapsed}s");
         }
-        connection.process(Duration::from_secs(3600))?;
+
+        if got_signal{
+            if let Err(e) = update_matrices(
+                &connection,
+                &mut last_img,
+                &mut last_pct,
+                &devices,
+                bat_brightness,
+                ac_brightness,
+            ) {eprintln!("{e}");}
+        } else if Instant::now() >= next_ping {
+            for device in &devices {
+                let mut port = serialport::new(device, 115_200)
+                    .timeout(Duration::from_secs(2))
+                    .open()
+                    .map_err(|error| format!("Could not open {device}: {error}"))?;
+                wake_up(&mut *port).map_err(|error| format!("Could not wake up {device}: {error}"))?;
+            }
+            next_ping = Instant::now() + KEEPALIVE;
+        }
+        got_signal = connection.process(next_ping.saturating_duration_since(Instant::now()))?;
     }
 }
 
@@ -129,32 +166,21 @@ fn update_matrices(
         .get("org.freedesktop.UPower.Device", "Percentage")
         .map_err(|error| format!("Could not read UPower battery percentage: {error}"))?;
     let percentage = percentage.round().clamp(0.0, 100.0) as u8;
-    let brightness_pct = if on_battery {
-        bat_brightness
-    } else {
-        ac_brightness
-    };
+    // Brightness is given as percent from input args
+    // Modules read a value from 0 to 255
+    // Convert percentage to 0-255 scale
+    let brightness_pct = if on_battery { bat_brightness } else { ac_brightness };
     let brightness_abs = (u16::from(brightness_pct.min(100)) * 255 / 100) as u8;
     let image = battery_image(percentage);
 
-    for device in devices {
-        let mut port = serialport::new(device, 115_200)
-            .timeout(Duration::from_secs(2))
-            .open()
-            .map_err(|error| format!("Could not open {device}: {error}"))?;
-        wake_up(&mut *port).map_err(|error| format!("Could not wake up {device}: {error}"))?;
-        set_brightness(&mut *port, brightness_abs)
-            .map_err(|error| format!("Could not set brightness on {device}: {error}"))?;
+    // DEBUG: Write percentage if it has changed
+    if *last_pct != percentage {
+        *last_pct = percentage;
+        debug!(
+            "Battery: {percentage}% ({} power)",
+            if on_battery { "battery" } else { "AC" }
+        );
     }
-
-    if *last_pct == percentage {
-        return Ok(());
-    }
-    *last_pct = percentage;
-    println!(
-        "Battery: {percentage}% ({} power)",
-        if on_battery { "battery" } else { "AC" }
-    );
 
     if *last_img == Some((brightness_abs, image)) {
         return Ok(());
@@ -165,6 +191,8 @@ fn update_matrices(
             .timeout(Duration::from_secs(2))
             .open()
             .map_err(|error| format!("Could not open {device}: {error}"))?;
+        set_brightness(&mut *port, brightness_abs)
+            .map_err(|error| format!("Could not set brightness on {device}: {error}"))?;
         display_image(&mut *port, &image)
             .map_err(|error| format!("Could not draw battery on {device}: {error}"))?;
     }
