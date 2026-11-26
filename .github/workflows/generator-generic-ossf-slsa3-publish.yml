@@ -3,7 +3,7 @@
 # separate terms of service, privacy policy, and support
 # documentation.
 
-# This workflow lets you generate SLSA provenance file for your project.
+# This workflow generates SLSA provenance file for a release.
 # The generation satisfies level 3 for the provenance requirements - see https://slsa.dev/spec/v0.1/requirements
 # The project is an initiative of the OpenSSF (openssf.org) and is developed at
 # https://github.com/slsa-framework/slsa-github-generator.
@@ -25,9 +25,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libdbus-1-dev
+
       # ========================================================
       #
-      # Step 1: Build your artifacts.
+      # Step 1: Build artifact.
       #
       # ========================================================
       - name: Build artifacts
@@ -36,10 +41,9 @@ jobs:
 
       # ========================================================
       #
-      # Step 2: Add a step to generate the provenance subjects
-      #         as shown below. Update the sha256 sum arguments
-      #         to include all binaries that you generate
-      #         provenance for.
+      # Step 2: Generate provenance subjects.
+      #         Update sha256 sum arguments to include all
+      #         all binaries that provenance is generated for
       #
       # ========================================================
       - name: Generate subject for provenance
