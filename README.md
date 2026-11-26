@@ -2,6 +2,13 @@
 
 ## Install as a user service
 
+On Ubuntu, install the build prerequisites:
+
+```sh
+sudo apt-get update
+sudo apt-get install -y pkg-config libdbus-1-dev
+```
+
 Build the binary and install it at the path used by the service:
 
 ```sh
