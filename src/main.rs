@@ -117,7 +117,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             println!("Seconds since last DBus UPower signal: +{elapsed}s");
         }
 
-        if got_signal{
+        if got_signal {
             if let Err(e) = update_matrices(
                 &connection,
                 &mut last_img,
@@ -125,14 +125,17 @@ fn main() -> Result<(), Box<dyn Error>> {
                 &devices,
                 bat_brightness,
                 ac_brightness,
-            ) {eprintln!("{e}");}
+            ) {
+                eprintln!("{e}");
+            }
         } else if Instant::now() >= next_ping {
             for device in &devices {
                 let mut port = serialport::new(device, 115_200)
                     .timeout(Duration::from_secs(2))
                     .open()
                     .map_err(|error| format!("Could not open {device}: {error}"))?;
-                wake_up(&mut *port).map_err(|error| format!("Could not wake up {device}: {error}"))?;
+                wake_up(&mut *port)
+                    .map_err(|error| format!("Could not wake up {device}: {error}"))?;
             }
             next_ping = Instant::now() + KEEPALIVE;
         }
@@ -169,7 +172,11 @@ fn update_matrices(
     // Brightness is given as percent from input args
     // Modules read a value from 0 to 255
     // Convert percentage to 0-255 scale
-    let brightness_pct = if on_battery { bat_brightness } else { ac_brightness };
+    let brightness_pct = if on_battery {
+        bat_brightness
+    } else {
+        ac_brightness
+    };
     let brightness_abs = (u16::from(brightness_pct.min(100)) * 255 / 100) as u8;
     let image = battery_image(percentage);
 
