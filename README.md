@@ -1,4 +1,6 @@
-# bat-matrix
+# Bat-Matrix
+
+Bat-Matrix is a battery monitor, sitting on Led Matrix modules for Framework 16 laptops.
 
 ## Install as a user service
 
