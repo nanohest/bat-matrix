@@ -2,6 +2,8 @@
 
 Bat-Matrix is a battery monitor, sitting on Led Matrix modules for Framework 16 laptops.
 
+<img width="720" height="540" alt="image" src="https://github.com/user-attachments/assets/274d8ea6-4874-4c23-94bc-d201d0e8b156" />
+
 ## Install
 
 Install the latest release and enable it as a systemd user service:
