@@ -3,7 +3,7 @@
 version = 4
 
 [[package]]
-name = "battery-monitor"
+name = "bat-matrix"
 version = "0.1.0"
 dependencies = [
  "dbus",
