@@ -2,7 +2,31 @@
 
 Bat-Matrix is a battery monitor, sitting on Led Matrix modules for Framework 16 laptops.
 
-## Install as a user service
+## Install
+
+Install the latest release and enable it as a systemd user service:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/nanohest/bat-matrix/main/install.sh | sh
+```
+
+Options are passed after `sh -s --`, for example:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/nanohest/bat-matrix/main/install.sh \
+  | sh -s -- --bin-dir /usr/local/bin --no-service
+```
+
+- `--bin-dir DIR` installs the binary into `DIR` instead of `~/.local/bin`.
+  `sudo` is used if `DIR` is not writable.
+- `--no-service` skips installing and enabling the systemd user service.
+
+If [slsa-verifier](https://github.com/slsa-framework/slsa-verifier) is
+installed, the script verifies the binary against the release's SLSA
+provenance and refuses to install it if verification fails. Without it, the
+script warns and installs the binary unverified.
+
+## Build from source
 
 Build the binary and install it at the path used by the service:
 
@@ -19,6 +43,8 @@ install -Dm644 systemd/bat-matrix.service \
 systemctl --user daemon-reload
 systemctl --user enable --now bat-matrix.service
 ```
+
+## Managing the service
 
 Check its status and logs with:
 
