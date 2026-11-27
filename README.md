@@ -61,7 +61,7 @@ back in before starting the service again.
 
 ```console
 $ bat-matrix -h
-USAGE: batmon [OPTIONS]
+USAGE: bat-matrix [OPTIONS]
 
 Show battery level on your Framework LED Matrix module(s)
 
@@ -77,11 +77,11 @@ OPTIONS:
 
 Examples:
   Show battery level on device ttyACM0 only
-    batmon -d /dev/ttyACM0
+    bat-matrix -d /dev/ttyACM0
 
   Set brightness when running on battery to 10%
-    batmon -b 10
+    bat-matrix -b 10
 
   Set brightness when running on AC power to 90%
-    batmon -a 90
+    bat-matrix -a 90
 ```

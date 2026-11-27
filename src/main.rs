@@ -12,7 +12,7 @@ const MATRIX_PORTS: [&str; 2] = ["/dev/ttyACM0", "/dev/ttyACM1"];
 const BATTERY_PATH: &str = "/org/freedesktop/UPower/devices/DisplayDevice";
 const UPOWER_PATH: &str = "/org/freedesktop/UPower";
 const HELP: &str = "\
-USAGE: batmon [OPTIONS]
+USAGE: bat-matrix [OPTIONS]
 
 Show battery level on your Framework LED Matrix module(s)
 
@@ -28,13 +28,13 @@ OPTIONS:
 
 Examples:
   Show battery level on device ttyACM0 only
-    batmon -d /dev/ttyACM0
+    bat-matrix -d /dev/ttyACM0
 
   Set brightness when running on battery to 10%
-    batmon -b 10
+    bat-matrix -b 10
 
   Set brightness when running on AC power to 90%
-    batmon -a 90
+    bat-matrix -a 90
 ";
 
 struct Args {
