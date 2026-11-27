@@ -19,6 +19,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # To upload the binary to the release.
     outputs:
       digests: ${{ steps.hash.outputs.hashes }}
 
@@ -38,6 +40,8 @@ jobs:
       - name: Build artifacts
         run: |
             cargo build --release
+            mkdir -p dist
+            cp target/release/bat-matrix dist/bat-matrix-x86_64-linux
 
       # ========================================================
       #
@@ -48,13 +52,28 @@ jobs:
       # ========================================================
       - name: Generate subject for provenance
         id: hash
+        working-directory: dist
         run: |
           set -euo pipefail
 
           # List the artifacts the provenance will refer to.
-          files=$(ls target/release/battery-monitor)
+          files=$(ls bat-matrix-x86_64-linux)
           # Generate the subjects (base64 encoded).
           echo "hashes=$(sha256sum $files | base64 -w0)" >> "${GITHUB_OUTPUT}"
+
+      # ========================================================
+      #
+      # Step 3: Upload the binary to the GitHub release.
+      #
+      # ========================================================
+      - name: Upload binary to release
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ github.event.release.tag_name }}
+        run: |
+          gh release upload "$TAG_NAME" dist/bat-matrix-x86_64-linux \
+            --repo "$GITHUB_REPOSITORY" --clobber
 
   provenance:
     needs: [build]

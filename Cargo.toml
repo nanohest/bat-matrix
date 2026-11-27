@@ -1,5 +1,5 @@
 [package]
-name = "battery-monitor"
+name = "bat-matrix"
 version = "0.1.0"
 edition = "2024"
 

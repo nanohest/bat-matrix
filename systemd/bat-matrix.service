@@ -2,7 +2,7 @@
 Description=Framework LED Matrix Battery Monitor
 
 [Service]
-ExecStart=%h/.local/bin/battery-monitor
+ExecStart=%h/.local/bin/bat-matrix
 Restart=on-failure
 RestartSec=5
 
