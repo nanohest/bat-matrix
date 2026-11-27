@@ -2,6 +2,8 @@
 
 Bat-Matrix is a battery monitor, sitting on Led Matrix modules for Framework 16 laptops.
 
+<img width="720" height="540" alt="image" src="https://github.com/user-attachments/assets/274d8ea6-4874-4c23-94bc-d201d0e8b156" />
+
 ## Install
 
 Install the latest release and enable it as a systemd user service:
@@ -56,3 +58,32 @@ journalctl --user -u bat-matrix.service -f
 The user running the service must have permission to access both LED matrix
 serial devices. If you change group membership to grant access, log out and
 back in before starting the service again.
+
+## Usage
+
+```console
+$ bat-matrix -h
+USAGE: bat-matrix [OPTIONS]
+
+Show battery level on your Framework LED Matrix module(s)
+
+OPTIONS:
+  -d, --device      Choose a single device to display battery status on.
+                    Eg.: /dev/ttyACM0
+                    Default: both of /dev/ttyACM0 and /dev/ttyACM1
+  -b, --on-battery  Set custom brightness level, for when laptop runs on battery, as integer (percentage)
+                    Default: 2
+  -a, --on-ac       Set custom brightness level, for when laptop runs on AC power, as integer (percentage)
+                    Default: 50
+  -v, --verbose     Enable verbose output. Mostly usable for debugging.
+
+Examples:
+  Show battery level on device ttyACM0 only
+    bat-matrix -d /dev/ttyACM0
+
+  Set brightness when running on battery to 10%
+    bat-matrix -b 10
+
+  Set brightness when running on AC power to 90%
+    bat-matrix -a 90
+```
