@@ -85,3 +85,4 @@ jobs:
     with:
       base64-subjects: "${{ needs.build.outputs.digests }}"
       upload-assets: true # Optional: Upload to a new release
+      provenance-name: bat-matrix-x86_64-linux.intoto.jsonl # Expected by install.sh
